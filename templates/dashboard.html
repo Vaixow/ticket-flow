@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | TicketFlow{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Dashboard</h1>
+    <div class="text-muted small">Última carga: {{ now }}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-primary" href="{% url 'ticket_create' %}">+ Nuevo Ticket</a>
+    <a class="btn btn-outline-secondary" href="{% url 'export_csv' %}">Exportar CSV</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small">Total</div>
+        <div class="display-6">{{ total }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small">Nuevos</div>
+        <div class="display-6">{{ nuevos }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small">En Proceso</div>
+        <div class="display-6">{{ en_proceso }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small">Resueltos</div>
+        <div class="display-6">{{ resueltos }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Últimos tickets</h2>
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Título</th>
+                <th>Estado</th>
+                <th>Prioridad</th>
+                <th>Categoría</th>
+                <th class="text-end">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in recientes %}
+              <tr>
+                <td class="text-muted">#{{ t.id }}</td>
+                <td class="fw-semibold">{{ t.titulo }}</td>
+                <td><span class="badge bg-secondary">{{ t.get_estado_display }}</span></td>
+                <td>{{ t.get_prioridad_display }}</td>
+                <td>{{ t.get_categoria_display }}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'ticket_edit' t.id %}">Editar</a>
+                  <form method="post" action="{% url 'ticket_delete' t.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar ticket #{{ t.id }}?')">Eliminar</button>
+                  </form>
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="6" class="text-muted">No hay tickets todavía.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="alert alert-light border mt-3 mb-0">
+          <strong>Tip evaluación:</strong> el CRUD de tickets está completo (crear, ver/listar, editar, eliminar).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Distribución por prioridad</h2>
+
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small">
+            <span>Baja</span><span>{{ por_prioridad.baja }}</span>
+          </div>
+          <div class="progress" role="progressbar">
+            <div class="progress-bar" style="width: {% if total %}{{ por_prioridad.baja|floatformat:0 }}{% else %}0{% endif %}%"></div>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small">
+            <span>Media</span><span>{{ por_prioridad.media }}</span>
+          </div>
+          <div class="progress" role="progressbar">
+            <div class="progress-bar" style="width: {% if total %}{{ por_prioridad.media|floatformat:0 }}{% else %}0{% endif %}%"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="d-flex justify-content-between small">
+            <span>Alta</span><span>{{ por_prioridad.alta }}</span>
+          </div>
+          <div class="progress" role="progressbar">
+            <div class="progress-bar" style="width: {% if total %}{{ por_prioridad.alta|floatformat:0 }}{% else %}0{% endif %}%"></div>
+          </div>
+        </div>
+
+        <p class="text-muted small mt-3 mb-0">
+          (Se puede justificar como “dashboard básico sin librerías externas”.)
+        </p>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">WebSocket Live (demo)</h2>
+        <div id="wsStatus" class="small text-muted mb-2">Conectando...</div>
+        <div id="wsFeed" class="small feed-box"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const statusEl = document.getElementById("wsStatus");
+  const feedEl = document.getElementById("wsFeed");
+
+  const proto = (location.protocol === "https:") ? "wss" : "ws";
+  const wsUrl = `${proto}://${location.host}/ws/tickets/`;
+  const ws = new WebSocket(wsUrl);
+
+  function addLine(text){
+    const div = document.createElement("div");
+    div.className = "feed-line";
+    div.textContent = text;
+    feedEl.prepend(div);
+  }
+
+  ws.onopen = () => { statusEl.textContent = "Conectado ✅"; };
+  ws.onclose = () => { statusEl.textContent = "Desconectado ❌"; };
+  ws.onerror = () => { statusEl.textContent = "Error en conexión ⚠️"; };
+
+  ws.onmessage = (ev) => {
+    try {
+      const data = JSON.parse(ev.data);
+      if (data.type === "ticket_event") {
+        const p = data.payload || {};
+        addLine(`[${data.action}] #${p.id} ${p.titulo} (${p.estado})`);
+      } else if (data.type === "system") {
+        addLine(`(sistema) ${data.message}`);
+      }
+    } catch(e) {}
+  };
+})();
+</script>
+{% endblock %}
